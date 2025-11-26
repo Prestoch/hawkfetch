@@ -11,7 +11,7 @@ import sys
 import time
 import unicodedata
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 import re
@@ -67,8 +67,8 @@ OUTPUT_HEADER = [
     "delta_favored_team",
     "team1_odds",
     "team2_odds",
-    "odds_provider",
-    "odds_timestamp",
+    "game_time_seconds",
+    "game_time_minutes",
 ]
 
 
@@ -148,7 +148,7 @@ def compute_delta(hero_data: Dict[str, object], team1_heroes: List[str], team2_h
     return (base1 + adv1) - (base2 + adv2)
 
 
-def extract_odds(match_props: Dict[str, object]) -> (Optional[str], Optional[str], Optional[str], Optional[str]):
+def extract_odds(match_props: Dict[str, object]) -> Tuple[Optional[str], Optional[str]]:
     odds_array = match_props.get("match_odds_info_array") or []
     earliest = None
     for provider in odds_array:
@@ -169,12 +169,31 @@ def extract_odds(match_props: Dict[str, object]) -> (Optional[str], Optional[str
             if earliest is None or (created and created < earliest.get("created_at", "")):
                 earliest = entry
     if not earliest:
-        return None, None, None, None
+        return None, None
     team1_odds = earliest["team1_odds"]
     team2_odds = earliest["team2_odds"]
     if earliest.get("is_team1_first") is False:
         team1_odds, team2_odds = team2_odds, team1_odds
-    return team1_odds, team2_odds, earliest.get("provider"), earliest.get("created_at")
+    return team1_odds, team2_odds
+
+
+def extract_final_game_time(match_props: Dict[str, object]) -> Tuple[Optional[int], Optional[float]]:
+    """
+    Return the final in-game time in seconds and minutes.
+
+    Hawk exposes a chronological list of state snapshots that includes the current
+    game_time in seconds. The last entry represents the final state of the map after
+    it completed, so we use it as the final duration.
+    """
+    states = (match_props.get("init_match") or {}).get("states") or []
+    if not states:
+        return None, None
+    last_state = states[-1] or {}
+    seconds = last_state.get("game_time")
+    if seconds is None:
+        return None, None
+    minutes = seconds / 60
+    return seconds, minutes
 
 
 def parse_match_page(match_id: int) -> Dict[str, object]:
@@ -266,7 +285,10 @@ def scrape_range(start_date: dt.date, end_date: dt.date, output_path: Path):
                     else:
                         winner = team2_name
                     favored_team = team1_name if delta > 0 else team2_name if delta < 0 else "Even"
-                    t1_odds, t2_odds, provider, odds_time = extract_odds(match_props)
+                    t1_odds, t2_odds = extract_odds(match_props)
+                    final_seconds, final_minutes = extract_final_game_time(match_props)
+                    seconds_value = str(final_seconds) if final_seconds is not None else ""
+                    minutes_value = f"{final_minutes:.2f}" if final_minutes is not None else ""
                     writer.writerow([
                         day.isoformat(),
                         championship,
@@ -282,8 +304,8 @@ def scrape_range(start_date: dt.date, end_date: dt.date, output_path: Path):
                         favored_team,
                         t1_odds or "",
                         t2_odds or "",
-                        provider or "",
-                        odds_time or "",
+                        seconds_value,
+                        minutes_value,
                     ])
                     total_rows += 1
             processed_days += 1
