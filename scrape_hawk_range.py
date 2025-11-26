@@ -182,16 +182,16 @@ def extract_final_game_time(match_props: Dict[str, object]) -> Tuple[Optional[in
     Return the final in-game time in seconds and minutes.
 
     Hawk exposes a chronological list of state snapshots that includes the current
-    game_time in seconds. The last entry represents the final state of the map after
-    it completed, so we use it as the final duration.
+    game_time in seconds. Some responses append additional states after the match
+    ends, so we rely on the maximum recorded game_time rather than the last entry.
     """
     states = (match_props.get("init_match") or {}).get("states") or []
     if not states:
         return None, None
-    last_state = states[-1] or {}
-    seconds = last_state.get("game_time")
-    if seconds is None:
+    times = [state.get("game_time") for state in states if state and state.get("game_time") is not None]
+    if not times:
         return None, None
+    seconds = max(times)
     minutes = seconds / 60
     return seconds, minutes
 
