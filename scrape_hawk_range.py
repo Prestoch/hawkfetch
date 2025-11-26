@@ -179,7 +179,7 @@ def extract_odds(match_props: Dict[str, object]) -> (Optional[str], Optional[str
 
 def extract_final_game_time(match_props: Dict[str, object]) -> Tuple[Optional[int], Optional[str]]:
     """
-    Convert the recorded game_time seconds into a decimal minutes string.
+    Convert the recorded game_time seconds into a clock-style minutes string.
 
     Hawk exposes chronological state snapshots that include `game_time` measured in
     seconds. Some responses may append additional states even after the match
@@ -203,8 +203,8 @@ def extract_final_game_time(match_props: Dict[str, object]) -> Tuple[Optional[in
     if max_seconds is None:
         return None, None
     minutes, seconds_remainder = divmod(max_seconds, 60)
-    decimal_minutes = f"{minutes}.{seconds_remainder:02d}"
-    return max_seconds, decimal_minutes
+    clock_minutes = f"{minutes}:{seconds_remainder:02d}"
+    return max_seconds, clock_minutes
 
 
 def parse_match_page(match_id: int) -> Dict[str, object]:
@@ -297,9 +297,9 @@ def scrape_range(start_date: dt.date, end_date: dt.date, output_path: Path):
                         winner = team2_name
                     favored_team = team1_name if delta > 0 else team2_name if delta < 0 else "Even"
                     t1_odds, t2_odds, _, _ = extract_odds(match_props)
-                    final_seconds, final_minutes_decimal = extract_final_game_time(match_props)
+                    final_seconds, final_minutes_clock = extract_final_game_time(match_props)
                     seconds_value = str(final_seconds) if final_seconds is not None else ""
-                    minutes_value = final_minutes_decimal or ""
+                    minutes_value = final_minutes_clock or ""
                     writer.writerow([
                         day.isoformat(),
                         championship,
