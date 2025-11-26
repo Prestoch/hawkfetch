@@ -69,6 +69,7 @@ OUTPUT_HEADER = [
     "team2_odds",
     "game_time_seconds",
     "game_time_minutes",
+    "game_time_clock",
     "odds_provider",
     "odds_timestamp",
 ]
@@ -179,9 +180,9 @@ def extract_odds(match_props: Dict[str, object]) -> (Optional[str], Optional[str
     return team1_odds, team2_odds, earliest.get("provider"), earliest.get("created_at")
 
 
-def extract_final_game_time(match_props: Dict[str, object]) -> Tuple[Optional[int], Optional[str]]:
+def extract_final_game_time(match_props: Dict[str, object]) -> Tuple[Optional[int], Optional[str], Optional[str]]:
     """
-    Convert the recorded game_time seconds into a human readable MM:SS string.
+    Convert the recorded game_time seconds into minutes formats.
 
     Hawk exposes chronological state snapshots that include `game_time` measured in
     seconds. Some responses may append additional states even after the match
@@ -203,10 +204,11 @@ def extract_final_game_time(match_props: Dict[str, object]) -> Tuple[Optional[in
         if max_seconds is None or seconds > max_seconds:
             max_seconds = seconds
     if max_seconds is None:
-        return None, None
+        return None, None, None
     minutes, seconds_remainder = divmod(max_seconds, 60)
-    minutes_str = f"{minutes}:{seconds_remainder:02d}"
-    return max_seconds, minutes_str
+    decimal_minutes = f"{minutes}.{seconds_remainder:02d}"
+    clock_string = f"{minutes:02d}:{seconds_remainder:02d}"
+    return max_seconds, decimal_minutes, clock_string
 
 
 def parse_match_page(match_id: int) -> Dict[str, object]:
@@ -299,9 +301,14 @@ def scrape_range(start_date: dt.date, end_date: dt.date, output_path: Path):
                         winner = team2_name
                     favored_team = team1_name if delta > 0 else team2_name if delta < 0 else "Even"
                     t1_odds, t2_odds, provider, odds_time = extract_odds(match_props)
-                    final_seconds, final_minutes = extract_final_game_time(match_props)
+                    (
+                        final_seconds,
+                        final_minutes_decimal,
+                        final_minutes_clock,
+                    ) = extract_final_game_time(match_props)
                     seconds_value = str(final_seconds) if final_seconds is not None else ""
-                    minutes_value = final_minutes or ""
+                    minutes_value = final_minutes_decimal or ""
+                    clock_value = final_minutes_clock or ""
                     writer.writerow([
                         day.isoformat(),
                         championship,
@@ -319,6 +326,7 @@ def scrape_range(start_date: dt.date, end_date: dt.date, output_path: Path):
                         t2_odds or "",
                         seconds_value,
                         minutes_value,
+                        clock_value,
                         provider or "",
                         odds_time or "",
                     ])
