@@ -11,7 +11,7 @@ import sys
 import time
 import unicodedata
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 import re
@@ -67,8 +67,8 @@ OUTPUT_HEADER = [
     "delta_favored_team",
     "team1_odds",
     "team2_odds",
-    "odds_provider",
-    "odds_timestamp",
+    "game_time_seconds",
+    "game_time_minutes",
 ]
 
 
@@ -177,6 +177,36 @@ def extract_odds(match_props: Dict[str, object]) -> (Optional[str], Optional[str
     return team1_odds, team2_odds, earliest.get("provider"), earliest.get("created_at")
 
 
+def extract_final_game_time(match_props: Dict[str, object]) -> Tuple[Optional[int], Optional[str]]:
+    """
+    Convert the recorded game_time seconds into a clock-style minutes string.
+
+    Hawk exposes chronological state snapshots that include `game_time` measured in
+    seconds. Some responses may append additional states even after the match
+    finishes, so we consider the maximum value instead of the final list entry.
+    """
+    states = (match_props.get("init_match") or {}).get("states") or []
+    if not states:
+        return None, None
+    max_seconds: Optional[int] = None
+    for state in states:
+        state = state or {}
+        raw_time = state.get("game_time")
+        if raw_time is None:
+            continue
+        try:
+            seconds = int(raw_time)
+        except (TypeError, ValueError):
+            continue
+        if max_seconds is None or seconds > max_seconds:
+            max_seconds = seconds
+    if max_seconds is None:
+        return None, None
+    minutes, seconds_remainder = divmod(max_seconds, 60)
+    clock_minutes = f"{minutes}:{seconds_remainder:02d}"
+    return max_seconds, clock_minutes
+
+
 def parse_match_page(match_id: int) -> Dict[str, object]:
     url = f"https://hawk.live/matches/{match_id}"
     text = fetch_url(url, MATCH_DELAY, MATCH_JITTER)
@@ -266,7 +296,10 @@ def scrape_range(start_date: dt.date, end_date: dt.date, output_path: Path):
                     else:
                         winner = team2_name
                     favored_team = team1_name if delta > 0 else team2_name if delta < 0 else "Even"
-                    t1_odds, t2_odds, provider, odds_time = extract_odds(match_props)
+                    t1_odds, t2_odds, _, _ = extract_odds(match_props)
+                    final_seconds, final_minutes_clock = extract_final_game_time(match_props)
+                    seconds_value = str(final_seconds) if final_seconds is not None else ""
+                    minutes_value = final_minutes_clock or ""
                     writer.writerow([
                         day.isoformat(),
                         championship,
@@ -282,8 +315,8 @@ def scrape_range(start_date: dt.date, end_date: dt.date, output_path: Path):
                         favored_team,
                         t1_odds or "",
                         t2_odds or "",
-                        provider or "",
-                        odds_time or "",
+                        seconds_value,
+                        minutes_value,
                     ])
                     total_rows += 1
             processed_days += 1
