@@ -82,7 +82,7 @@ if (!is_array($h_wr)) {
 }
 
 $winRatesMatch = [];
-if (!preg_match('/win_rates\s*=\s*(\[[\s\S]*?\])\s*(?:[,;]\s*)?update_time/m', $csjson, $winRatesMatch)) {
+if (!preg_match('/win_rates\s*=\s*(\[[\s\S]*?\])\s*(?:[,;]\s*)?(?:(?:var|let|const)\s+)?update_time/m', $csjson, $winRatesMatch)) {
     die('cs.json win_rates problem');
 }
 $h_wrs = json_decode($winRatesMatch[1], true);
