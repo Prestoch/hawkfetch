@@ -77,10 +77,26 @@ def normalize(name: str) -> str:
 
 
 def load_hero_data(cs_path: Path) -> Dict[str, object]:
-    text = cs_path.read_text(encoding="utf-8")
-    heroes = json.loads(re.search(r"var heroes = (\[.*?\]), heroes_bg", text, re.S).group(1))
-    heroes_wr = [float(x) if x is not None else 50.0 for x in json.loads(re.search(r"heroes_wr = (\[.*?\]), win_rates", text, re.S).group(1))]
-    win_rates = json.loads(re.search(r"win_rates = (\[.*?\]), update_time", text, re.S).group(1))
+    text = cs_path.read_text(encoding="utf-8").strip()
+    if not text:
+        raise ValueError("cs.json is empty")
+    payload = None
+    if text.startswith("{"):
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            payload = None
+    if payload is not None:
+        heroes = payload.get("heroes") or []
+        heroes_wr_raw = payload.get("heroes_wr") or []
+        win_rates = payload.get("win_rates") or []
+    else:
+        heroes = json.loads(re.search(r"var heroes = (\[.*?\]), heroes_bg", text, re.S).group(1))
+        heroes_wr_raw = json.loads(re.search(r"heroes_wr = (\[.*?\]), win_rates", text, re.S).group(1))
+        win_rates = json.loads(re.search(r"win_rates = (\[.*?\]), update_time", text, re.S).group(1))
+    if not heroes or not heroes_wr_raw or not win_rates:
+        raise ValueError("cs.json is missing hero win rate payloads")
+    heroes_wr = [float(x) if x is not None else 50.0 for x in heroes_wr_raw]
     hero_index = {normalize(name): idx for idx, name in enumerate(heroes)}
     return {
         "heroes_wr": heroes_wr,
